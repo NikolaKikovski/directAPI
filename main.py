@@ -15,7 +15,7 @@ headers = {'Authorization': 'Bearer ' + TOKEN,
            'Accept-Language': 'ru',
            'Client-Login': LOGIN}
 
-
+# Открываем файл с JSON в нужной кодировке
 with open(FILE, encoding='utf-8') as f:
     raw_json = json.load(f)
 
@@ -117,6 +117,6 @@ def add_keywords():
     return pull_keywords()
 
 
-# Открываем файл с JSON в нужной кодировке
+
 
 add_keywords()
