@@ -107,6 +107,7 @@ class YadirectAPI:
                         # После отправки запроса, список очищается и начинает заполняться заново.
                         del keywords[:]
             return pull_keywords()
+
         return add_keywords()
 
 
