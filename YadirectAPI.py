@@ -1,6 +1,6 @@
 import json
 import requests
-
+from datetime import date
 
 # Определяем тело адреса API яндекс
 HOST = 'https://api.direct.yandex.com/json/v5/'
@@ -14,33 +14,48 @@ class YadirectAPI:
             'Client-Login': login
         }
 
-    def add(self, raw_json):
-        # Создаем компанию
+    def add(self, your_json):
+        if isinstance(your_json, dict):
+            raw_json = your_json
+        else:
+            raw_json = json.load(your_json)
+        data = raw_json['data']
+
+        def request(href,obj_data):
+            try:
+                results = requests.post(HOST+href,obj_data,headers=self.headers)
+                if results.status_code != 200 or results.json().get("error", False):
+                    error = "Код ошибки {}".format(results.json()["error"]["error_code"])
+                    print(error)
+                else:
+                    print("ОК. Информация о баллах: {}".format(results.headers.get("Units")))
+                    return results.json()
+            except ConnectionError:
+                print("Ошибка соединения с сервером")
+            except:
+                print("Непредвиденная ошибка")
+
         def create_campaigns():
             # Получаем информацию о компании из JSON файла
-            campaign = raw_json['data'][0]['campaign']
+            campaign = data[0]['campaign']
             # Выставляем дату начала комании
-            campaign['StartDate'] = '2018-09-01'
-            # Определяем структуру запроса
-            campaigns_data = {"method": "add",
+            if campaign['StartDate'] == "null":
+                campaign['StartDate'] = date.today()
+            campaigns_body = {"method": "add",
                               "params": {"Campaigns": [campaign]}}
             # Подготавливаем JSON для запроса
-            prepare_json = json.dumps(campaigns_data)
+            body_json = json.dumps(campaigns_body)
             # Отправляем запрос на сервер
-            pull = requests.post(HOST + 'campaigns/', prepare_json, headers=self.headers)
-            # Получаем ответ сервера
-            result = pull.json()
-            # Получаем ID созданной компании
-            campaign_id = result['result']['AddResults'][0]['Id']
-            # Возвращаем ID
-            return campaign_id
+            push = request('campaigns/',body_json)
+
+            return push
 
         # Создаем группы
         def create_groups():
             # Сюда будем собирать все группы из файла
             groups = []
             # Получаем ID компании
-            campaign_id = create_campaigns()
+            campaign_id = create_campaigns()['result']['AddResults'][0]['Id']
             for item in raw_json['data']:
                 # Получаем объекты групп из файла
                 group = item['adgroup']
@@ -49,57 +64,48 @@ class YadirectAPI:
                 # Отправляем объекты в список
                 groups.append(group)
             # Определяем структуру запроса
-            groups_data = {"method": "add",
+            groups_body = {"method": "add",
                            "params": {"AdGroups": groups}}
             # Подготавливаем JSON для запроса
-            prepare_json = json.dumps(groups_data)
+            body_json = json.dumps(groups_body)
             # Отправляем запрос на сервер
-            pull = requests.post(HOST + 'adgroups/', prepare_json, headers=self.headers)
-            # Получаем ответ сервера
-            result = pull.json()
-            # Получаем ID созданных групп
-            groups_id = result['result']['AddResults']
-            # Возвращаем ID
-            return groups_id
+            push = request('adgroups/', body_json)
+            return push
 
         # Создаем объявления
         def create_ads():
             # Здесь все аналогично, только итераций больше
-            groups_ids = create_groups()
-            ads_raw = raw_json['data']
+            groups_ids = create_groups()['result']['AddResults']
             for i in range(len(groups_ids)):
-                ads_raw[i]['ad']['AdGroupId'] = groups_ids[i]['Id']
+                data[i]['ad']['AdGroupId'] = groups_ids[i]['Id']
             ads = []
-            for item in ads_raw:
+            for item in data:
                 ads.append(item['ad'])
-            ads_data = {"method": "add",
+            ads_body = {"method": "add",
                         "params": {"Ads": ads}}
-            prepare_json = json.dumps(ads_data)
-            pull = requests.post(HOST + 'ads/', prepare_json, headers=self.headers)
-            pull.json()
+            ads_json = json.dumps(ads_body)
+            request('ads/', ads_json)
             return groups_ids
 
         # Отправка ключевых слов
         def add_keywords():
             group_ids = create_ads()
-            keyword_raw = raw_json['data']
             keywords = []
 
             # Все тоже самое кроме этой функции. Из-за ограничения в 1000 ключевых слов в запросе,
             # ниже мы отлавливаем размер списка. При его наполнении мыотравляем запрос.
             def pull_keywords():
-                keywords_data = {"method": "add",
+                keywords_body = {"method": "add",
                                  "params": {"Keywords": keywords}}
-                prepare_json = json.dumps(keywords_data)
-                pull = requests.post(HOST + 'keywords/', prepare_json, headers=self.headers)
-                result = pull.json()
-                return result
+                keywords_json = json.dumps(keywords_body)
+                push = request('keywords/', keywords_json)
+                return push
 
             for i in range(len(group_ids)):
-                for z in keyword_raw[i]['keywords']:
-                    z["AdGroupId"] = group_ids[i]['Id']
-                    # z["Bid"] = 1000000
-                for item in keyword_raw[i]['keywords']:
+                for item in data[i]['keywords']:
+                    item["AdGroupId"] = group_ids[i]['Id']
+                    if item["Bid"] == "null":
+                        item["Bid"] = 1000000
                     keywords.append(item)
                     # Отлов происходит здесь.
                     if len(keywords) == 999:
